@@ -42,7 +42,7 @@ def set_weights(net, parameters):
     net.load_state_dict(state_dict, strict=True)
 
 
-fds = None  # Cache FederatedDataset
+dataset = None  # Cache FederatedDataset
 
 
 def load_data(partition_id: int, num_partitions: int, batch_size: int):

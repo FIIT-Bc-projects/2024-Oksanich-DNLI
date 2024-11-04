@@ -122,7 +122,12 @@ def get_accuracy(prediction, label):
     return accuracy
 
 
-def train(model, data_loader, device, criterion, optimizer):
+def train(model, data_loader, device):
+    model.to(device)
+
+    criterion = torch.nn.CrossEntropyLoss().to(device)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-5)
+
     model.train()
 
     epoch_losses = []
@@ -147,7 +152,11 @@ def train(model, data_loader, device, criterion, optimizer):
     return np.mean(epoch_losses), np.mean(epoch_accuracies)
 
 
-def test(model, data_loader, device, criterion):
+def test(model, data_loader, device):
+    model.to(device)
+
+    criterion = torch.nn.CrossEntropyLoss().to(device)
+
     model.eval()
 
     epoch_losses = []

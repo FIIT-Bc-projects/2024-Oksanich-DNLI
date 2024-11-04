@@ -9,6 +9,8 @@ dependencies = [
     "flwr[simulation]>=1.12.0",
     "flwr-datasets[vision]>=0.3.0",
     "torch==2.2.1",
+    "transformers",
+    "matplotlib",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -30,11 +32,11 @@ fraction-evaluate = 0.5
 default = "local-sim-gpu"
 
 [tool.flwr.federations.local-sim]
-options.num-supernodes = 50
+options.num-supernodes = 4
 options.backend.client-resources.num-cpus = 2
 options.backend.client-resources.num-gpus = 0.0
 
 [tool.flwr.federations.local-sim-gpu]
-options.num-supernodes = 10
+options.num-supernodes = 4
 options.backend.client-resources.num-cpus = 2
-options.backend.client-resources.num-gpus = 0.25
+options.backend.client-resources.num-gpus = 0.2

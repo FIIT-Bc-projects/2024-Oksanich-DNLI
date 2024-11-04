@@ -11,7 +11,7 @@ import torch
 
 
 class FlowerClient(NumPyClient):
-    def __init__(self, model, training_loader, validation_loader) -> None:
+    def __init__(self, model, training_loader, validation_loader):
         super().__init__()
 
         self.training_loader = training_loader
@@ -19,25 +19,23 @@ class FlowerClient(NumPyClient):
 
         self.model: Transformer = model
 
-        self.criterion = torch.nn.CrossEntropyLoss()
+        #self.criterion = torch.nn.CrossEntropyLoss()
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        self.model = self.model.to(self.device)
-        self.criterion = self.criterion.to(self.device)
+        #self.model = self.model.to(self.device)
+        #self.criterion = self.criterion.to(self.device)
 
     def fit(self, parameters, config):
         set_weights(self.model, parameters)
 
-        optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-5)
-
-        loss, accuracy = train(self.model, self.training_loader, self.device, self.criterion, optimizer)
+        loss, accuracy = train(self.model, self.training_loader, self.device)
 
         return get_weights(self.model), len(self.training_loader), {"loss": loss, "accuracy": accuracy}
 
     def evaluate(self, parameters: NDArrays, config: Dict[str, Scalar]):
         set_weights(self.model, parameters)
 
-        loss, accuracy = test(self.model, self.validation_loader, self.device, self.criterion)
+        loss, accuracy = test(self.model, self.validation_loader, self.device)
 
         return float(loss), len(self.validation_loader), {"accuracy": accuracy}
 

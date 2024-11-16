@@ -16,19 +16,15 @@ class FlowerClient(NumPyClient):
 
         self.training_loader = training_loader
         self.validation_loader = validation_loader
-
         self.model: Transformer = model
-
-        #self.criterion = torch.nn.CrossEntropyLoss()
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-        #self.model = self.model.to(self.device)
-        #self.criterion = self.criterion.to(self.device)
 
     def fit(self, parameters, config):
         set_weights(self.model, parameters)
 
         loss, accuracy = train(self.model, self.training_loader, self.device)
+
+        torch.cuda.empty_cache()
 
         return get_weights(self.model), len(self.training_loader), {"loss": loss, "accuracy": accuracy}
 
@@ -37,11 +33,12 @@ class FlowerClient(NumPyClient):
 
         loss, accuracy = test(self.model, self.validation_loader, self.device)
 
+        torch.cuda.empty_cache()
+
         return float(loss), len(self.validation_loader), {"accuracy": accuracy}
 
 
 def client_fn(context: Context):
-    # Load model and data
     tf = AutoModel.from_pretrained("bert-base-uncased")
     model = Transformer(tf, num_classes=3, freeze=False)
 

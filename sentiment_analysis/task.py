@@ -49,7 +49,7 @@ partitioner = None
 tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
 
 
-def load_data(partition_id: int, num_partitions: int, batch_size=32):
+def load_data(partition_id: int, num_partitions: int, batch_size=24):
     global dataset, partitioner
 
     def collate_fn(batch):

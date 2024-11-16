@@ -39,4 +39,4 @@ options.backend.client-resources.num-gpus = 0.0
 [tool.flwr.federations.local-sim-gpu]
 options.num-supernodes = 4
 options.backend.client-resources.num-cpus = 2
-options.backend.client-resources.num-gpus = 0.2
+options.backend.client-resources.num-gpus = 0.25

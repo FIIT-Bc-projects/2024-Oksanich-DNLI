@@ -6,7 +6,7 @@ from flwr.server.strategy import FedAvg
 
 from transformers import AutoModel
 
-from sentiment_analysis.task import Transformer, get_weights
+from .task import Transformer, get_weights
 
 
 def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
@@ -16,12 +16,12 @@ def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
     return {"accuracy": sum(accuracies) / sum(examples)}
 
 
-def server_fn(context: Context):
+def server_fn(context: Context) -> ServerAppComponents:
     num_rounds = context.run_config["num-server-rounds"]
     fraction_fit = context.run_config["fraction-fit"]
     fraction_eval = context.run_config["fraction-evaluate"]
 
-    tf = AutoModel.from_pretrained("bert-base-uncased")
+    tf = AutoModel.from_pretrained("distilbert-base-uncased")
     model = Transformer(tf, num_classes=3, freeze=False)
 
     global_model_init = ndarrays_to_parameters(get_weights(model))

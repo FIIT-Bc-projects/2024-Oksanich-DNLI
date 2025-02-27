@@ -11,8 +11,6 @@ from torch.utils.data import DataLoader
 
 from transformers import AutoTokenizer
 
-from typing import Tuple
-
 import numpy as np
 
 import pandas as pd
@@ -28,19 +26,18 @@ class Transformer(nn.Module):
         super().__init__()
 
         self.transformer = transformer
-        self.fc = nn.Linear(transformer.config.hidden_size, num_classes)
         self.dropout = nn.Dropout(0.3)
+        self.fc = nn.Linear(transformer.config.hidden_size, num_classes)
 
         if freeze:
             for param in self.transformer.parameters():
                 param.requires_grad = False
 
-    def forward(self, ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
+
+    def forward(self, ids: torch.Tensor, attention_mask: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         output = self.transformer(ids, attention_mask=attention_mask, output_attentions=True)
-
-        cls_hidden = output.last_hidden_state[:, 0, :]
-        cls_hidden = self.dropout(torch.tanh(cls_hidden))
-
+        pooled_mean = torch.mean(output.last_hidden_state, dim=1)
+        cls_hidden = self.dropout(pooled_mean)
         prediction = self.fc(cls_hidden)
 
         return prediction, output.attentions
@@ -62,12 +59,14 @@ partitioner = None
 
 tokenizer = AutoTokenizer.from_pretrained("distilbert-base-uncased")
 
+label_mapping = {
+    "Negative": 0,
+    "Neutral": 1,
+    "Positive": 2,
+}
 
-def load_data(partition_id: int, num_partitions: int, batch_size=24) -> Tuple[DataLoader, DataLoader]:
-    global dataset, partitioner
 
-    pad_index = tokenizer.pad_token_id
-
+def get_collate_fn(pad_index):
     def collate_fn(batch):
         batch_ids = nn.utils.rnn.pad_sequence([i["ids"] for i in batch], padding_value=pad_index, batch_first=True)
         batch_label = torch.stack([i["label"] for i in batch])
@@ -78,14 +77,27 @@ def load_data(partition_id: int, num_partitions: int, batch_size=24) -> Tuple[Da
             "label": batch_label,
             "attention_mask": batch_mask,
         }
+    
+    return collate_fn
+
+
+def tokenize_data(dataset: Dataset, tokenizer) -> Dataset:
+    copied = dataset.map(
+        lambda s, tok: {
+            "ids": (encoded := tok(s["text"], truncation=True, padding=True))["input_ids"],
+            "attention_mask": encoded["attention_mask"],
+        },
+        fn_kwargs={"tok": tokenizer},
+    )
+    copied = copied.with_format(type="torch", columns=["ids", "label", "attention_mask"])
+
+    return copied
+
+
+def load_data(partition_id: int, num_partitions: int, batch_size=24) -> tuple[DataLoader, DataLoader]:
+    global dataset, partitioner
 
     if dataset is None:
-        label_mapping = {
-            "Negative": 0,
-            "Neutral": 1,
-            "Positive": 2,
-        }
-
         training_data = pd.read_csv("data/twitter_training.csv")
         training_data = training_data[training_data.label != "Irrelevant"].drop(columns=["tweet_id", "entity"]).dropna()
         training_data["label"] = training_data["label"].map(label_mapping)
@@ -98,14 +110,7 @@ def load_data(partition_id: int, num_partitions: int, batch_size=24) -> Tuple[Da
         data.drop_duplicates(inplace=True)
 
         dataset = Dataset.from_pandas(data, preserve_index=False)
-        dataset = dataset.map(
-            lambda s, t: {
-                "ids": (encoded := t(s["text"], truncation=True))["input_ids"],
-                "attention_mask": encoded["attention_mask"],
-            },
-            fn_kwargs={"t": tokenizer},
-        )
-        dataset = dataset.with_format(type="torch", columns=["ids", "label", "attention_mask"])
+        dataset = tokenize_data(dataset, tokenizer)
 
         partitioner = IidPartitioner(num_partitions=num_partitions)
         partitioner.dataset = dataset
@@ -119,7 +124,7 @@ def load_data(partition_id: int, num_partitions: int, batch_size=24) -> Tuple[Da
     training_loader = DataLoader(
         dataset=training_partition,
         batch_size=batch_size,
-        collate_fn=collate_fn,
+        collate_fn=get_collate_fn(tokenizer.pad_token_id),
         shuffle=True,
         pin_memory=True,
     )
@@ -127,7 +132,7 @@ def load_data(partition_id: int, num_partitions: int, batch_size=24) -> Tuple[Da
     validation_loader = DataLoader(
         dataset=validation_partition,
         batch_size=batch_size,
-        collate_fn=collate_fn,
+        collate_fn=get_collate_fn(tokenizer.pad_token_id),
         pin_memory=True,
     )
 
@@ -147,7 +152,12 @@ def get_precision(prediction, label):
     return precision_score(actual_labels, predicted_classes, average="macro", zero_division=0)
 
 
-def train(model, data_loader, device) -> Tuple[np.float64, np.float64, np.float64]:
+def train(
+        model: Transformer,
+        data_loader: DataLoader,
+        device: torch.device,
+        id: int,
+) -> tuple[np.float64, np.float64, np.float64]:
     model.to(device)
 
     criterion = torch.nn.CrossEntropyLoss().to(device)
@@ -159,7 +169,7 @@ def train(model, data_loader, device) -> Tuple[np.float64, np.float64, np.float6
     batch_accuracies = []
     batch_precisions = []
 
-    for batch in tqdm.tqdm(data_loader, desc="Training..."):
+    for batch in tqdm.tqdm(data_loader, desc=f"Training (partition #{id})..."):
         ids = batch["ids"].to(device)
         label = batch["label"].to(device)
         attention_mask = batch["attention_mask"].to(device)
@@ -181,7 +191,12 @@ def train(model, data_loader, device) -> Tuple[np.float64, np.float64, np.float6
     return np.mean(batch_losses), np.mean(batch_accuracies), np.mean(batch_precisions)
 
 
-def test(model, data_loader, device) -> Tuple[np.float64, np.float64, np.float64]:
+def test(
+        model: Transformer,
+        data_loader: DataLoader,
+        device: torch.device,
+        id: int,
+) -> tuple[np.float64, np.float64, np.float64]:
     model.to(device)
 
     criterion = torch.nn.CrossEntropyLoss().to(device)
@@ -193,12 +208,12 @@ def test(model, data_loader, device) -> Tuple[np.float64, np.float64, np.float64
     batch_precisions = []
 
     with torch.no_grad():
-        for batch in tqdm.tqdm(data_loader, desc="Evaluating..."):
+        for batch in tqdm.tqdm(data_loader, desc=f"Evaluating (partition #{id})..." if id >= 0 else "Evaluating (centralized)..."):
             ids = batch["ids"].to(device)
             label = batch["label"].to(device)
             attention_mask = batch["attention_mask"].to(device)
 
-            prediction = model(ids, attention_mask)
+            prediction, _ = model(ids, attention_mask)
 
             loss = criterion(prediction, label)
             accuracy = get_accuracy(prediction, label)

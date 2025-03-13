@@ -23,28 +23,41 @@ class FlowerClient(NumPyClient):
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         self.id = id
 
+
     def fit(self, parameters: NDArrays, config):
         set_weights(self.model, parameters)
 
-        loss, accuracy, precision = train(self.model, self.training_loader, self.device, self.id)
+        loss, accuracy, precision, recall, f1_score = train(self.model, self.training_loader, self.device, self.id)
 
         torch.cuda.empty_cache()
 
-        return get_weights(self.model), len(self.training_loader), {"loss": loss, "accuracy": accuracy, "precision": precision}
+        return get_weights(self.model), len(self.training_loader), {
+            "loss": loss,
+            "accuracy": accuracy,
+            "precision": precision,
+            "recall": recall,
+            "f1_score": f1_score,
+        }
+
 
     def evaluate(self, parameters: NDArrays, config: Dict[str, Scalar]):
         set_weights(self.model, parameters)
 
-        loss, accuracy, precision = test(self.model, self.validation_loader, self.device, self.id)
+        loss, accuracy, precision, recall, f1_score = test(self.model, self.validation_loader, self.device, self.id)
 
         torch.cuda.empty_cache()
 
-        return float(loss), len(self.validation_loader), {"accuracy": accuracy, "precision": precision}
+        return float(loss), len(self.validation_loader), {
+            "accuracy": accuracy,
+            "precision": precision,
+            "recall": recall,
+            "f1_score": f1_score,
+        }
 
 
 def client_fn(context: Context) -> FlowerClient:
-    tf = AutoModel.from_pretrained("distilbert-base-uncased")
-    model = Transformer(tf, num_classes=3, freeze=False)
+    distilbert_tf = AutoModel.from_pretrained("distilbert-base-uncased")
+    model = Transformer(distilbert_tf, num_classes=3, freeze=False)
 
     partition_id = context.node_config["partition-id"]
     num_partitions = context.node_config["num-partitions"]

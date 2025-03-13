@@ -5,13 +5,15 @@ from datasets import Dataset
 from flwr.common import NDArrays
 from flwr_datasets.partitioner import IidPartitioner
 
-from sklearn.metrics import accuracy_score, precision_score
+from sklearn.metrics import accuracy_score, precision_score, recall_score
 
 from torch.utils.data import DataLoader
 
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, PreTrainedTokenizer
 
 import numpy as np
+
+import os
 
 import pandas as pd
 
@@ -19,6 +21,9 @@ import torch
 import torch.nn as nn
 
 import tqdm
+
+
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 
 class Transformer(nn.Module):
@@ -57,12 +62,13 @@ def set_weights(model: nn.Module, parameters: NDArrays):
 dataset = None
 partitioner = None
 
-tokenizer = AutoTokenizer.from_pretrained("distilbert-base-uncased")
+global distilbert_tokenizer
+distilbert_tokenizer = AutoTokenizer.from_pretrained("distilbert-base-uncased")
 
 label_mapping = {
-    "Negative": 0,
-    "Neutral": 1,
-    "Positive": 2,
+    "negative": 0,
+    "neutral": 1,
+    "positive": 2,
 }
 
 
@@ -81,7 +87,7 @@ def get_collate_fn(pad_index):
     return collate_fn
 
 
-def tokenize_data(dataset: Dataset, tokenizer) -> Dataset:
+def tokenize_data(dataset: Dataset, tokenizer: PreTrainedTokenizer) -> Dataset:
     copied = dataset.map(
         lambda s, tok: {
             "ids": (encoded := tok(s["text"], truncation=True, padding=True))["input_ids"],
@@ -94,37 +100,40 @@ def tokenize_data(dataset: Dataset, tokenizer) -> Dataset:
     return copied
 
 
-def load_data(partition_id: int, num_partitions: int, batch_size=24) -> tuple[DataLoader, DataLoader]:
+def preprocess_data(df: pd.DataFrame) -> pd.DataFrame:
+    copied = df[["sentence", "gold_label"]].rename(columns={"sentence": "text", "gold_label": "label"})
+    copied = copied[copied.label != "mixed"].dropna()
+    copied["label"] = copied["label"].map(label_mapping)
+
+    return copied
+
+
+def load_data(partition_id: int, num_partitions: int, batch_size: int=24) -> tuple[DataLoader, DataLoader]:
     global dataset, partitioner
 
     if dataset is None:
-        training_data = pd.read_csv("data/twitter_training.csv")
-        training_data = training_data[training_data.label != "Irrelevant"].drop(columns=["tweet_id", "entity"]).dropna()
-        training_data["label"] = training_data["label"].map(label_mapping)
+        data = preprocess_data(pd.read_json("data/dynasent-v1.1-round01-yelp-train.jsonl", lines=True))
+        #validation_data = preprocess_data(pd.read_json("data/dynasent-v1.1-round01-yelp-test.jsonl", lines=True))
 
-        validation_data = pd.read_csv("data/twitter_validation.csv")
-        validation_data = validation_data[validation_data.label != "Irrelevant"].drop(columns=["tweet_id", "entity"]).dropna()
-        validation_data["label"] = validation_data["label"].map(label_mapping)
-
-        data = pd.concat([training_data, validation_data])
-        data.drop_duplicates(inplace=True)
+        #data = pd.concat([training_data, validation_data], ignore_index=True)
+        #data.drop_duplicates(inplace=True)
 
         dataset = Dataset.from_pandas(data, preserve_index=False)
-        dataset = tokenize_data(dataset, tokenizer)
+        dataset = tokenize_data(dataset, distilbert_tokenizer)
 
         partitioner = IidPartitioner(num_partitions=num_partitions)
         partitioner.dataset = dataset
 
     partition = partitioner.load_partition(partition_id)
 
-    train_test = partition.train_test_split(test_size=0.2, seed=42)
+    train_test = partition.train_test_split(test_size=0.15, seed=42)
     training_partition = train_test["train"]
     validation_partition = train_test["test"]
 
     training_loader = DataLoader(
         dataset=training_partition,
         batch_size=batch_size,
-        collate_fn=get_collate_fn(tokenizer.pad_token_id),
+        collate_fn=get_collate_fn(distilbert_tokenizer.pad_token_id),
         shuffle=True,
         pin_memory=True,
     )
@@ -132,24 +141,33 @@ def load_data(partition_id: int, num_partitions: int, batch_size=24) -> tuple[Da
     validation_loader = DataLoader(
         dataset=validation_partition,
         batch_size=batch_size,
-        collate_fn=get_collate_fn(tokenizer.pad_token_id),
+        collate_fn=get_collate_fn(distilbert_tokenizer.pad_token_id),
         pin_memory=True,
     )
 
     return training_loader, validation_loader
 
 
-def get_accuracy(prediction, label):
+def get_accuracy(prediction, label) -> np.float64:
     predicted_classes = prediction.argmax(dim=-1).cpu().numpy()
     actual_labels = label.cpu().numpy()
-
+    
     return accuracy_score(actual_labels, predicted_classes)
 
-def get_precision(prediction, label):
+def get_precision(prediction, label) -> np.float64:
     predicted_classes = prediction.argmax(dim=-1).cpu().numpy()
     actual_labels = label.cpu().numpy()
     
     return precision_score(actual_labels, predicted_classes, average="macro", zero_division=0)
+
+def get_recall(prediction, label) -> np.float64:
+    predicted_classes = prediction.argmax(dim=-1).cpu().numpy()
+    actual_labels = label.cpu().numpy()
+    
+    return recall_score(actual_labels, predicted_classes, average="macro", zero_division=0)
+
+def get_f1_score(precision: np.float64, recall: np.float64) -> np.float64:
+    return np.float64(2.0) * (precision * recall) / (precision + recall)
 
 
 def train(
@@ -157,7 +175,7 @@ def train(
         data_loader: DataLoader,
         device: torch.device,
         id: int,
-) -> tuple[np.float64, np.float64, np.float64]:
+) -> tuple[np.float64, np.float64, np.float64, np.float64, np.float64]:
     model.to(device)
 
     criterion = torch.nn.CrossEntropyLoss().to(device)
@@ -168,8 +186,9 @@ def train(
     batch_losses = []
     batch_accuracies = []
     batch_precisions = []
+    batch_recalls = []
 
-    for batch in tqdm.tqdm(data_loader, desc=f"Training (partition #{id})..."):
+    for batch in tqdm.tqdm(data_loader, desc=f"Training (partition {id})..."):
         ids = batch["ids"].to(device)
         label = batch["label"].to(device)
         attention_mask = batch["attention_mask"].to(device)
@@ -179,16 +198,24 @@ def train(
         loss = criterion(prediction, label)
         accuracy = get_accuracy(prediction, label)
         precision = get_precision(prediction, label)
+        recall = get_recall(prediction, label)
 
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
-        batch_losses.append(loss.item())
+        batch_losses.append(loss)
         batch_accuracies.append(accuracy)
-        batch_precisions.append(precision.item())
+        batch_precisions.append(precision)
+        batch_recalls.append(recall)
 
-    return np.mean(batch_losses), np.mean(batch_accuracies), np.mean(batch_precisions)
+    avg_loss = np.mean(batch_losses)
+    avg_accuracy = np.mean(batch_accuracies)
+    avg_precision = np.mean(batch_precisions)
+    avg_recall = np.mean(batch_recalls)
+    f1_score = get_f1_score(avg_precision, avg_recall)
+
+    return avg_loss, avg_accuracy, avg_precision, avg_recall, f1_score
 
 
 def test(
@@ -196,7 +223,7 @@ def test(
         data_loader: DataLoader,
         device: torch.device,
         id: int,
-) -> tuple[np.float64, np.float64, np.float64]:
+) -> tuple[np.float64, np.float64, np.float64, np.float64, np.float64]:
     model.to(device)
 
     criterion = torch.nn.CrossEntropyLoss().to(device)
@@ -206,9 +233,10 @@ def test(
     batch_losses = []
     batch_accuracies = []
     batch_precisions = []
+    batch_recalls = []
 
     with torch.no_grad():
-        for batch in tqdm.tqdm(data_loader, desc=f"Evaluating (partition #{id})..." if id >= 0 else "Evaluating (centralized)..."):
+        for batch in tqdm.tqdm(data_loader, desc=f"Evaluating (partition {id})..." if id >= 0 else "Evaluating (centralized)..."):
             ids = batch["ids"].to(device)
             label = batch["label"].to(device)
             attention_mask = batch["attention_mask"].to(device)
@@ -218,9 +246,17 @@ def test(
             loss = criterion(prediction, label)
             accuracy = get_accuracy(prediction, label)
             precision = get_precision(prediction, label)
+            recall = get_recall(prediction, label)
 
-            batch_losses.append(loss.item())
+            batch_losses.append(loss)
             batch_accuracies.append(accuracy)
-            batch_precisions.append(precision.item())
+            batch_precisions.append(precision)
+            batch_recalls.append(recall)
 
-    return np.mean(batch_losses), np.mean(batch_accuracies), np.mean(batch_precisions)
+    avg_loss = np.mean(batch_losses)
+    avg_accuracy = np.mean(batch_accuracies)
+    avg_precision = np.mean(batch_precisions)
+    avg_recall = np.mean(batch_recalls)
+    f1_score = get_f1_score(avg_precision, avg_recall)
+
+    return avg_loss, avg_accuracy, avg_precision, avg_recall, f1_score

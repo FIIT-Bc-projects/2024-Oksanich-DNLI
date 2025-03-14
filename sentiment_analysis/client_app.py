@@ -1,5 +1,5 @@
 from flwr.common import NDArrays, Scalar, Context
-from flwr.client import NumPyClient, ClientApp
+from flwr.client import NumPyClient, ClientApp, Client
 
 from .task import Transformer, get_weights, set_weights, train, test, load_data
 
@@ -10,8 +10,6 @@ from transformers import AutoModel
 from typing import Dict
 
 import torch
-
-#torch.cuda.set_per_process_memory_fraction(0.25, device=0)
 
 class FlowerClient(NumPyClient):
     def __init__(self, model: Transformer, training_loader: DataLoader, validation_loader: DataLoader, id: int):
@@ -55,8 +53,8 @@ class FlowerClient(NumPyClient):
         }
 
 
-def client_fn(context: Context) -> FlowerClient:
-    distilbert_tf = AutoModel.from_pretrained("distilbert-base-uncased")
+def client_fn(context: Context) -> Client:
+    distilbert_tf = AutoModel.from_pretrained("distilbert-base-uncased", attn_implementation="eager")
     model = Transformer(distilbert_tf, num_classes=3, freeze=False)
 
     partition_id = context.node_config["partition-id"]

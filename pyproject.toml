@@ -24,19 +24,22 @@ serverapp = "sentiment_analysis.server_app:app"
 clientapp = "sentiment_analysis.client_app:app"
 
 [tool.flwr.app.config]
-num-server-rounds = 3
+num-server-rounds = 2
 fraction-fit = 0.25
-fraction-evaluate = 0.5
+fraction-evaluate = 0.25
+server-device = "cpu"
 
 [tool.flwr.federations]
 default = "local-sim-gpu"
 
 [tool.flwr.federations.local-sim]
 options.num-supernodes = 4
-options.backend.client-resources.num-cpus = 2
+options.backend.client-resources.num-cpus = 4
 options.backend.client-resources.num-gpus = 0.0
 
 [tool.flwr.federations.local-sim-gpu]
 options.num-supernodes = 4
-options.backend.client-resources.num-cpus = 2
-options.backend.client-resources.num-gpus = 0.25
+options.backend.client-resources.num-cpus = 4
+options.backend.client-resources.num-gpus = 0.5
+# options.backend.init_args.num_cpus = 1
+# options.backend.init_args.num_gpus = 1

@@ -23,12 +23,9 @@ def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
     return {"accuracy": sum(accuracies) / sum(examples)}
 
 
-def gen_evaluate_fn(
-    validation_loader: DataLoader,
-    device: torch.device,
-):
+def gen_evaluate_fn(validation_loader: DataLoader, device):
     def evaluate(server_round, parameters_ndarrays, config):
-        distilbert_tf = AutoModel.from_pretrained("distilbert-base-uncased")
+        distilbert_tf = AutoModel.from_pretrained("distilbert-base-uncased", attn_implementation="eager")
         model = Transformer(distilbert_tf, num_classes=3, freeze=False)
 
         set_weights(model, parameters_ndarrays)
@@ -53,8 +50,11 @@ def server_fn(context: Context) -> ServerAppComponents:
     fraction_eval = context.run_config["fraction-evaluate"]
     server_device = context.run_config["server-device"]
 
-    distilbert_tf = AutoModel.from_pretrained("distilbert-base-uncased")
+    distilbert_tf = AutoModel.from_pretrained("distilbert-base-uncased", attn_implementation="eager")
     model = Transformer(distilbert_tf, num_classes=3, freeze=False)
+
+    #checkpoint = torch.load("model/model_state_acc_0.5252777777777777_round_3.pth", weights_only=True)
+    #model.load_state_dict(checkpoint)
 
     global_model_init = ndarrays_to_parameters(get_weights(model))
 
@@ -75,6 +75,7 @@ def server_fn(context: Context) -> ServerAppComponents:
     strategy = CustomFedAvg(
         fraction_fit=fraction_fit,
         fraction_evaluate=fraction_eval,
+        fit_metrics_aggregation_fn=weighted_average,
         evaluate_fn=gen_evaluate_fn(validation_loader, server_device),
         evaluate_metrics_aggregation_fn=weighted_average,
         initial_parameters=global_model_init,

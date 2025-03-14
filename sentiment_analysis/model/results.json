@@ -1,0 +1,78 @@
+{
+    "centralized_evaluate": [
+        {
+            "round": 0,
+            "centralized_loss": 1.099992838303248,
+            "centralized_accuracy": 0.3575,
+            "centralized_precision": 0.2865652044320775,
+            "centralized_recall": 0.3574767978934646,
+            "centralized_f1_score": 0.31811717651385374
+        },
+        {
+            "round": 1,
+            "centralized_loss": 1.1610970056056977,
+            "centralized_accuracy": 0.3333333333333333,
+            "centralized_precision": 0.11111111111111109,
+            "centralized_recall": 0.3333333333333333,
+            "centralized_f1_score": 0.16666666666666663
+        },
+        {
+            "round": 2,
+            "centralized_loss": 1.0553804918130238,
+            "centralized_accuracy": 0.43,
+            "centralized_precision": 0.3573470518125811,
+            "centralized_recall": 0.42949030599030597,
+            "centralized_f1_score": 0.3901113568279943
+        },
+        {
+            "round": 3,
+            "centralized_loss": 0.9830811280012131,
+            "centralized_accuracy": 0.5252777777777777,
+            "centralized_precision": 0.5785994549778088,
+            "centralized_recall": 0.5233355625855626,
+            "centralized_f1_score": 0.5495817202580144
+        },
+        {
+            "round": 4,
+            "centralized_loss": 0.8783919791380564,
+            "centralized_accuracy": 0.607361111111111,
+            "centralized_precision": 0.6623653091929665,
+            "centralized_recall": 0.6053858209691544,
+            "centralized_f1_score": 0.6325950842354893
+        },
+        {
+            "round": 5,
+            "centralized_loss": 0.8746771624684334,
+            "centralized_accuracy": 0.6148611111111112,
+            "centralized_precision": 0.6757900194633941,
+            "centralized_recall": 0.6122194595527928,
+            "centralized_f1_score": 0.6424359559885675
+        }
+    ],
+    "federated_evaluate": [
+        {
+            "round": 1,
+            "federated_evaluate_loss": 0.9382252168655395,
+            "accuracy": 0.5606862745098039
+        },
+        {
+            "round": 2,
+            "federated_evaluate_loss": 0.8480498464902242,
+            "accuracy": 0.6162908496732026
+        },
+        {
+            "round": 3,
+            "federated_evaluate_loss": 0.7870030762751897,
+            "accuracy": 0.6563562091503269
+        }, {
+            "round": 4,
+            "federated_evaluate_loss": 0.7594714842240016,
+            "accuracy": 0.6802450980392156
+        },
+        {
+            "round": 5,
+            "federated_evaluate_loss": 0.7169744137922923,
+            "accuracy": 0.697875816993464
+        }
+    ]
+}

@@ -112,11 +112,8 @@ def load_data(partition_id: int, num_partitions: int, batch_size: int=24) -> tup
     global dataset, partitioner
 
     if dataset is None:
-        data = preprocess_data(pd.read_json("data/dynasent-v1.1-round01-yelp-train.jsonl", lines=True))
-        #validation_data = preprocess_data(pd.read_json("data/dynasent-v1.1-round01-yelp-test.jsonl", lines=True))
-
-        #data = pd.concat([training_data, validation_data], ignore_index=True)
-        #data.drop_duplicates(inplace=True)
+        data = (preprocess_data(pd.read_json("data/dynasent-v1.1-round01-yelp-train.jsonl", lines=True))
+                .head(47_800))
 
         dataset = Dataset.from_pandas(data, preserve_index=False)
         dataset = tokenize_data(dataset, distilbert_tokenizer)
@@ -179,7 +176,7 @@ def train(
     model.to(device)
 
     criterion = torch.nn.CrossEntropyLoss().to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-5)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-6)
 
     model.train()
 
@@ -204,7 +201,7 @@ def train(
         loss.backward()
         optimizer.step()
 
-        batch_losses.append(loss)
+        batch_losses.append(loss.item())
         batch_accuracies.append(accuracy)
         batch_precisions.append(precision)
         batch_recalls.append(recall)
@@ -248,7 +245,7 @@ def test(
             precision = get_precision(prediction, label)
             recall = get_recall(prediction, label)
 
-            batch_losses.append(loss)
+            batch_losses.append(loss.item())
             batch_accuracies.append(accuracy)
             batch_precisions.append(precision)
             batch_recalls.append(recall)

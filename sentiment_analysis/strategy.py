@@ -35,7 +35,7 @@ class CustomFedAvg(FedAvg):
 
             ndarrays = parameters_to_ndarrays(parameters)
 
-            distilbert_tf = AutoModel.from_pretrained("distilbert-base-uncased")
+            distilbert_tf = AutoModel.from_pretrained("distilbert-base-uncased", attn_implementation="eager")
             model = Transformer(distilbert_tf, num_classes=3, freeze=False)
 
             set_weights(model, ndarrays)

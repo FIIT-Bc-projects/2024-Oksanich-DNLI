@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "sentiment_analysis"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
     "flwr[simulation]>=1.12.0",
     "flwr-datasets[vision]>=0.3.0",
@@ -17,7 +17,7 @@ dependencies = [
 packages = ["."]
 
 [tool.flwr.app]
-publisher = "flwrlabs"
+publisher = "ileukocyte"
 
 [tool.flwr.app.components]
 serverapp = "sentiment_analysis.server_app:app"
@@ -41,5 +41,3 @@ options.backend.client-resources.num-gpus = 0.0
 options.num-supernodes = 4
 options.backend.client-resources.num-cpus = 4
 options.backend.client-resources.num-gpus = 0.5
-# options.backend.init_args.num_cpus = 1
-# options.backend.init_args.num_gpus = 1
